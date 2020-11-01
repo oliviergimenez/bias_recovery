@@ -1,0 +1,266 @@
+---
+title: "Bias in mortality estimates"
+author: "Tavecchia and Gimenez"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    social: menu
+    source_code: embed
+runtime: shiny
+---
+    
+```{r global, include=FALSE}
+
+# Load packages
+library(RMark)
+library(visreg)
+
+
+# Define function to carry out simulations:
+bias_fn <- function(years = 15, # Years (occasions)
+                    N = 50, # Released each year
+                    x.s = c(rep(0.8,9),rep(0.6,9),rep(0.4,9)),
+                    x.p = c(rep(c(0.7,0.5,0.2),9)),
+                    x.r = c(rep(c(0.2,0.2,0.2,0.1,0.1,0.1,0.01,0.01,0.01),3))){ 
+  
+# Loop on 27 simulations (dim1^dim2) 
+dim1 <- 3
+dim2 <- 3
+#x.s <- c(rep(0.8,9),rep(0.6,9),rep(0.4,9))
+##x.p<-c(rep(c(0.7,0.6,0.4),9))
+#x.p <- c(rep(c(0.7,0.5,0.2),9))
+#x.r <- c(rep(c(0.2,0.2,0.2,0.1,0.1,0.1,0.01,0.01,0.01),3))
+
+results <- matrix(0, 27, 4)
+mortality.wrong <- rep(0, 27)
+
+  for (m in 1:(dim1^3)){
+    
+    #DATASET CHARACTERISTICS
+    s <- rep(x.s[m], years)
+    p <- rep(x.p[m], years)
+    r <- rep(x.r[m], years)
+    
+    #DATASET BUILDING
+    # Define a function to simulate a mark-recovery matrix
+    L <- matrix(0,N*years, years)
+    D <- matrix(0,N*years, years)
+    LD <- matrix(0,N*years, 2*years)
+    
+    rel.occ <- rep(1:years,each=N)
+    
+    for (i in 1:(N*years)) {
+      #Write heach animal history
+      L[i,rel.occ[i]] <- 1
+      for (y in rel.occ[i]:years){
+        #survival process
+        sur <- rbinom(1, 1, s[y])
+        if (sur==0) {
+          rp <- rbinom(1, 1, r[y])
+          if (rp==0){
+            D[i,y] <- 0
+            break
+          }
+          if (rp==1){
+            D[i,y] <- 2
+            break
+          }
+        }
+        
+        # Bernoulli trial: has individual been recaptured? 
+        pp <- rbinom(1, 1, p[y])
+        #if (pp==1) L[i,y] <- 1
+        if (pp==1 & y<years) L[i,y+1] <- 1
+      } # time (y) 
+    } # animal (i)
+    
+    LD[,seq(from=1,to=2*years,by=2)] <- L
+    LD[,seq(from=2,to=2*years,by=2)] <- D
+    
+    ############ Export LD matrix into a MARK File format ##########
+    filename <- c("LD.inp")
+    LD.rmark <- LD
+    LD.rmark[LD==2] <- 1
+    input <- cbind(LD.rmark," ","1",";")
+    write.table(input,filename,quote=FALSE,sep="",col.names=F,row.names=F)
+    
+    ############## LD analysis in MARK ##################
+    LD_1 <- convert.inp("LD.inp")
+    LD.proc <- process.data(data = LD_1,model = "Burnham")
+    # make the design data from the process data above
+    LD.ddl <- make.design.data(LD.proc)
+    # assign p=1 for time=3; all others are NA and free to vary
+    #LD.ddl$F$fix=1
+    #PIMS(mark(data = LD.proc,
+    #          ddl = LD.ddl,
+    #          model.parameters = list(S=list(formula=~1)),
+    #          output = FALSE,
+    #          model = "Burnham"),"S")
+    S.dot <- list(formula=~1) #
+    p.dot <- list(formula=~1) # p(.)
+    F.dot <- list(formula=~1) # 
+    r.dot <- list(formula=~1) # r(.)
+    p.time <- list(formula=~time) # p(.)
+    
+    LD.model.allconstant <- mark(data = LD.proc,
+                                 ddl = LD.ddl,
+                                 model.parameters = list(S = S.dot, p = p.dot, F = F.dot, r = r.dot), 
+                                 invisible = FALSE,
+                                 model = "Burnham")
+    LD.model.ptime <- mark(data = LD.proc,
+                           ddl = LD.ddl,
+                           model.parameters = list(S = S.dot, p = p.time, F = F.dot, r = r.dot), 
+                           invisible = FALSE,
+                           model = "Burnham")
+    out <- cbind(summary(LD.model.allconstant)$real$S[[1]]$pim[1],
+                 summary(LD.model.allconstant)$real$p[[1]]$pim[1],
+                 summary(LD.model.allconstant)$real$r[[1]]$pim[1],
+                 summary(LD.model.allconstant)$real$F[[1]]$pim[1])
+    results[m,] <- out
+    #####################################################
+    
+    #####################################################################
+    #####################################################################
+    ################# Write De Santins et al. format ####################
+    #####################################################################
+    # Select only rows with more than 1 entry. This will eliminate the last year
+    LD_sum <- L+ D
+    LD_sum[LD_sum==3] <- 2
+    temp <- which(rowSums(LD_sum)<=1)
+    LD_reduced <- LD_sum[-temp,]
+    dim(LD_reduced)
+    #find last non zero column (last) and its value (prep)
+    k <- dim(LD_reduced)[1]
+    last <- rep(0,k)
+    prep <- rep(0,k)
+    
+    for (i in 1:k){
+      temp1 <- which(LD_reduced[i,]!=0)
+      last[i] <- tail(temp1,1)
+      prep[i] <- LD_reduced[i,last[i]]}
+    
+    ############################# Logistic models ######################
+    prep[prep==1] <- 0
+    prep[prep==2] <- 1
+    #Logistic regression
+    mod0 <- glm(prep~1,family=binomial)
+    mortality.wrong[m] <- mean(predict(mod0,type="response"))
+  } #m
+  ###################### End of the loop ##############################
+list(results = results, 
+     mortality.wrong = mortality.wrong,
+     x.s = x.s,
+     x.p = x.p,
+     x.r = x.r)
+}
+```
+
+
+Column {.sidebar}
+-----------------------------------------------------------------------
+
+Compute the relative bias in the maximum-likelihood estimator of the mortality probability using Burnham’s joint recapture-recovery model and the conditional method proposed by De Santis and colleagues.
+
+
+```{r}
+shiny::selectInput("years", label = "Years (occasions):",
+            choices = c(5, 10, 15, 20), selected = 5)
+
+shiny::selectInput("N", label = "Released each year:",
+            choices = c(10, 50, 100), selected = 10)
+
+#shiny::selectInput("pal", label = "Color palette:",
+#            choices = c("BrBG", "PiYG", "PRGn", "PuOr", "RdBu", "RdGy", "RdYlBu", "RdYlGn", "Spectral"), selected = "BrBG")
+```
+
+Column {data-width=400}
+-----------------------------------------------------------------------
+
+### What is the amount of bias ?
+
+```{r}
+selectedData <- shiny::reactive({
+# Compute bias:
+x.s <- c(rep(0.8,9),rep(0.6,9),rep(0.4,9))
+x.p <- c(rep(c(0.7,0.5,0.2),9))
+x.r <- c(rep(c(0.2,0.2,0.2,0.1,0.1,0.1,0.01,0.01,0.01),3))
+res <- bias_fn(years = as.numeric(input$years),
+               N = as.numeric(input$N),
+               x.s = x.s,
+               x.p = x.p,
+               x.r = x.r)
+res
+})
+```
+
+```{r}
+# Visualize bias:
+shiny::renderPlot({
+tot <- as.data.frame(cbind(1 - selectedData()$x.s,
+                           selectedData()$x.p,
+                           selectedData()$x.r,
+                           selectedData()$x.p / selectedData()$x.r,
+                           1 - selectedData()$results[,1],
+                           selectedData()$results[,2:4],
+                           selectedData()$mortality.wrong,
+                           1 - selectedData()$results[,1] - selectedData()$mortality.wrong))
+names(tot) <- c("Mortality",
+                "Recapture",
+                "Recovery",
+                "Ratio",
+                "Est.Mortality",
+                "Est.Recapture",
+                "Est.Recovery",
+                "Est.Fidelity",
+                "Cond.Mortality",
+                "Bias")
+ratio <- log(tot$Recapture / tot$Recovery)
+y <- tot$Cond.Mortality
+fit <- lm(y ~ ratio)
+Diff <- tot$Bias
+fit0 <- lm(Diff ~ ratio)
+par(mfrow = c(2,1))
+visreg(fit,
+       xlab = expression(paste("log"," ","(",lambda,"/","p",")")),
+       ylab = c("Mortality conditional to last live-dead observation"),
+       line = list(col = "black"),
+       fill = list(col = "grey"),
+       points = list(cex = 1.5, pch = 19))
+
+visreg(fit0,
+       xlab = expression(paste("log"," ","(",lambda,"/","p",")")),
+       ylab = c("Bias (conditional mortality - unconditional mortaltiy)"),
+       line = list(col = "black"),
+       fill = list(col = "grey"),
+       points = list(cex = 1.5, pch = 19))
+abline(v = 0, h = 0)
+})  
+```
+
+Column {data-width=600}
+-----------------------------------------------------------------------
+
+### Simulation details {data-width=400}
+
+```{r}
+shiny::renderTable({
+tot <- as.data.frame(cbind(1 - selectedData()$x.s,
+                           1 - selectedData()$results[,1],
+                           selectedData()$mortality.wrong,
+                           1 - selectedData()$results[,1] - selectedData()$mortality.wrong,
+                           selectedData()$x.p,
+#                           selectedData()$results[,2],
+                           selectedData()$x.r))
+#                           selectedData()$results[,3:4]))
+names(tot) <- c("Mortality",
+                "Est.Mortality",
+                "Cond.Mortality",
+                "Bias",
+                "Recapture",
+#                "Est.Recapture",
+                "Recovery")
+#                "Est.Recovery",
+#                "Est.Fidelity")
+tot
+})
+```
