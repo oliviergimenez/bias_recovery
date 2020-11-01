@@ -4,9 +4,9 @@ In this repo, you will find a [flexdashboard](https://garrettgman.github.io/rmar
 
 You can run the app locally on your computer from RStudio. To do so, download the file `index.Rmd`, open it in RStudio, click on `Run Document`, and the app should pop up. 
 
-We use package `RMark` to fit a CMRR model to the simulated data. This package calls the `Mark` standalone computer program from `R`. Unfortunately, it makes it impossible to deploy the app on GitHub or shinyapps.io because we would need to have the `mark.exe` on the server too. 
+We use package `RMark` to fit a CMRR model to the simulated data. This package calls the `Mark` standalone computer program from `R`. Unfortunately, it makes it impossible to deploy the app on GitHub or shinyapps.io because we would need to have the `mark.exe` installed there. 
 
-An alternative would be to use the [`marked` package](https://github.com/jlaake/marked) developed by Jeff Laake. This package uses `TMB` to fit capture-recapture models. It offers the option to fit the CMRR model with multiple states, check out `?msld_tmb` and `Paradise_shelduck`. 
+An alternative would be to use the [`marked` package](https://github.com/jlaake/marked) developed by Jeff Laake. This package uses `TMB` to fit capture-recapture models. It offers the option to fit the CMRR model with multiple states, check out `?Paradise_shelduck`. 
 
-Another laternative would be to write the likelihood of the CMRR model entirely in R, without relying on `RMark`. I have [some code](https://github.com/oliviergimenez/multievent_jags_R) that I could adapt. See also [this recent paper](Assessing bias in demographic estimates
-from joint live and dead encounter models) for some inspiration.
+Another alternative would be to write the likelihood of the CMRR model entirely in R, without relying on `RMark`. I have [some code](https://github.com/oliviergimenez/multievent_jags_R) that I could adapt. See also [this recent paper](https://peerj.com/articles/9382/) for some inspiration.
+
