@@ -107,11 +107,11 @@ mortality.wrong <- rep(0, 27)
                                  model.parameters = list(S = S.dot, p = p.dot, F = F.dot, r = r.dot), 
                                  invisible = FALSE,
                                  model = "Burnham")
-    LD.model.ptime <- mark(data = LD.proc,
-                           ddl = LD.ddl,
-                           model.parameters = list(S = S.dot, p = p.time, F = F.dot, r = r.dot), 
-                           invisible = FALSE,
-                           model = "Burnham")
+#    LD.model.ptime <- mark(data = LD.proc,
+#                           ddl = LD.ddl,
+#                           model.parameters = list(S = S.dot, p = p.time, F = F.dot, r = r.dot), 
+#                           invisible = FALSE,
+#                           model = "Burnham")
     out <- cbind(summary(LD.model.allconstant)$real$S[[1]]$pim[1],
                  summary(LD.model.allconstant)$real$p[[1]]$pim[1],
                  summary(LD.model.allconstant)$real$r[[1]]$pim[1],
