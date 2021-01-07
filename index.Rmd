@@ -1,6 +1,6 @@
 ---
 title: "Bias in mortality estimates"
-author: "Tavecchia and Gimenez"
+author: "Tavecchia and colleagues"
 output: 
   flexdashboard::flex_dashboard:
     orientation: columns
